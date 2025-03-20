@@ -1,0 +1,92 @@
+---
+title: "NRG_Sankey"
+author: "Malvika Tejura"
+date: "2025-03-19"
+output: html_document
+---
+
+```{r}
+
+# Load required libraries
+library(ggplot2)
+library(tidyverse)
+library(ggsankey)
+library(readxl)
+
+data = read_excel('~/Downloads/NRG_review_Sankey_data.xlsx')
+
+# Calculate Remaining VUS
+data <- data %>%
+  mutate(Remaining_VUS = VUS - Benign - Pathogenic)
+
+# Expand the data for Sankey
+expanded_data <- data %>%
+  rowwise() %>%
+  mutate(
+    Pathogenic_rows = list(rep("Pathogenic", Pathogenic)),
+    Benign_rows = list(rep("Benign", Benign)),
+    Remaining_rows = list(rep("VUS Remaining", Remaining_VUS))
+  ) %>%
+  select(Gene, Pathogenic_rows, Benign_rows, Remaining_rows) %>%
+  pivot_longer(
+    cols = c(Pathogenic_rows, Benign_rows, Remaining_rows),
+    names_to = "Flow_Type",
+    values_to = "Flow"
+  ) %>%
+  unnest(cols = c(Flow)) %>%
+  mutate(VUS = "VUS")  
+
+# Convert the expanded dataframe into long format for ggsankey
+sankey_data_long <- expanded_data %>%
+  rename(Source = VUS, MidNode = Gene, Target = Flow) %>%
+  ggsankey::make_long(Source, MidNode, Target)
+
+# Define custom colors
+custom_colors <- c(
+  "VUS" = "grey",           # Grey for VUS
+  "Pathogenic" = "#EA4C46", # Red for Pathogenic
+  "Benign" = "#6BAED6",     # Blue for Benign
+  "VUS Remaining" = "grey"  # Grey for VUS Remaining
+)
+
+# Assign pastel colors for genes
+gene_nodes <- c("TP53", "RHO", "PTEN", "PAX6", "OTC", "NDUFAF6", "MSH2", "KCNQ4", "JAG1", "CARD11", "CALM1/2/3", "BRCA1")
+generate_pastel_colors <- function(n) {
+  hues <- seq(15, 375, length = n + 1)  
+  hcl(h = hues, l = 80, c = 50)[1:n]   
+}
+gene_colors <- setNames(generate_pastel_colors(length(gene_nodes)), gene_nodes)
+
+# Merge custom colors with gene colors
+node_colors <- c(custom_colors, gene_colors)
+
+# Order the nodes
+sankey_data_long$node <- factor(
+  sankey_data_long$node, 
+  levels = c(gene_nodes, "VUS", "Pathogenic", "VUS Remaining", "Benign")
+)
+
+# Plot the Sankey diagram
+sankey_plot <- ggplot(sankey_data_long, aes(
+  x = x,
+  next_x = next_x,
+  node = node,
+  next_node = next_node,
+  fill = factor(node),
+  label = node
+)) +
+  geom_sankey(flow.alpha = 0.7, node.color = "black") +
+  geom_sankey_label(size = 3, color = "black") +
+  scale_fill_manual(values = node_colors) +
+  theme_minimal() +
+  theme(
+    axis.text = element_blank(),
+    axis.title = element_blank(),
+    axis.ticks = element_blank(),
+    panel.grid = element_blank(),
+    legend.position = "none"
+  )
+
+# Print the plot
+print(sankey_plot)
+```
